@@ -296,7 +296,9 @@ export default function OSDPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(INIT_ITEMS[0].id)
   const [showGallery, setShowGallery] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([])
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([
+    { id: "sample-source-selector", url: "/images/source-selector.png", name: "source-selector.png" },
+  ])
   const [activeTab, setActiveTab] = useState<"list" | "settings">("list")
 
   const selectedItem = items.find((i) => i.id === selectedId) ?? null

@@ -318,7 +318,9 @@ export default function OSDDrawer({ open, onClose }: { open: boolean; onClose: (
   const [osdEnabled,  setOsdEnabled]  = useState(true)
   const [items,       setItems]       = useState<OSDItem[]>(INIT)
   const [selectedId,  setSelectedId]  = useState<string | null>(INIT[0].id)
-  const [gallery,     setGallery]     = useState<GalleryImage[]>([])
+  const [gallery,     setGallery]     = useState<GalleryImage[]>([
+    { id: "sample-source-selector", url: "/images/source-selector.png", name: "source-selector.png" },
+  ])
   const [showGallery, setShowGallery] = useState(false)
   const [tab,         setTab]         = useState<"list" | "props">("list")
   const [uploadErrs,  setUploadErrs]  = useState<UploadError[]>([])
