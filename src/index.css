@@ -1,0 +1,50 @@
+@import 'tailwindcss';
+
+@font-face {
+  font-family: "Quicksand:Regular";
+  font-style: normal;
+  font-weight: 400;
+  src: url("https://static.figma.com/font/Quicksand_wght__1") format("woff2");
+}
+
+@font-face {
+  font-family: "Quicksand:Bold";
+  font-style: normal;
+  font-weight: 700;
+  src: url("https://static.figma.com/font/Quicksand_wght__1") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter:Regular";
+  font-style: normal;
+  font-weight: 400;
+  src: url("https://static.figma.com/font/Inter_1") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter:Bold";
+  font-style: normal;
+  font-weight: 700;
+  src: url("https://static.figma.com/font/Inter_1") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Sans SC:Regular";
+  font-style: normal;
+  font-weight: 400;
+  src: url("https://static.figma.com/font/NotoSansSC-VF_2") format("woff2");
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}

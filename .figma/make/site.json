@@ -1,0 +1,10 @@
+{
+  "description": "Create and customize an interactive on-screen display with text, images, and overlays, featuring a user-friendly interface for easy preview and finalization.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

@@ -1,0 +1,775 @@
+import { useState, useRef, useCallback, useEffect } from "react"
+import { motion, AnimatePresence } from "motion/react"
+
+type OSDItemType = "text" | "time" | "image" | "h5"
+
+interface OSDItem {
+  id: string
+  type: OSDItemType
+  label: string
+  enabled: boolean
+  content: string
+  x: number  // % 0-100
+  y: number  // % 0-100
+  fontSize: number
+  scale: number  // 0.5 - 3.0
+  color: string
+  imageUrl?: string
+}
+
+interface GalleryImage {
+  id: string
+  url: string
+  name: string
+}
+
+const TYPE_COLORS: Record<OSDItemType, string> = {
+  text: "#11B2FF",
+  time: "#00BE63",
+  image: "#FF6B35",
+  h5: "#A855F7",
+}
+
+const TYPE_LABELS: Record<OSDItemType, string> = {
+  text: "Text",
+  time: "Time",
+  image: "Image",
+  h5: "H5",
+}
+
+const TYPE_ICONS: Record<OSDItemType, React.ReactNode> = {
+  text: (
+    <svg viewBox="0 0 16 16" fill="none" className="size-4">
+      <path d="M2 3h12M8 3v10M5 13h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  ),
+  time: (
+    <svg viewBox="0 0 16 16" fill="none" className="size-4">
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 5v3l2 1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  ),
+  image: (
+    <svg viewBox="0 0 16 16" fill="none" className="size-4">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="5.5" cy="6.5" r="1" fill="currentColor" />
+      <path d="M2 11l3.5-3 3 3 2-2 3 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  h5: (
+    <svg viewBox="0 0 16 16" fill="none" className="size-4">
+      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M5 5v6M5 8h6M11 5v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  ),
+}
+
+// 9 preset positions: [label, x%, y%]
+const PRESETS: [string, number, number][] = [
+  ["↖", 10, 10], ["↑", 50, 10], ["↗", 90, 10],
+  ["←", 10, 50], ["·", 50, 50], ["→", 90, 50],
+  ["↙", 10, 90], ["↓", 50, 90], ["↘", 90, 90],
+]
+
+const PRESET_LABELS: [string, string, number, number][] = [
+  ["Top Left",    "↖", 10, 10], ["Top",    "↑", 50, 10], ["Top Right",    "↗", 90, 10],
+  ["Left",        "←", 10, 50], ["Center", "·", 50, 50], ["Right",        "→", 90, 50],
+  ["Bottom Left", "↙", 10, 90], ["Bottom", "↓", 50, 90], ["Bottom Right", "↘", 90, 90],
+]
+
+function posLabel(x: number, y: number): string {
+  const col = x <= 20 ? "L" : x >= 80 ? "R" : "C"
+  const row = y <= 20 ? "Top" : y >= 80 ? "Bot" : "Mid"
+  return `${row}-${col}  ${Math.round(x)}%,${Math.round(y)}%`
+}
+
+function Toggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      role="switch"
+      aria-checked={enabled}
+      className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none"
+      style={{ backgroundColor: enabled ? "#11B2FF" : "#4b4b4b" }}
+    >
+      <motion.span
+        layout
+        className="absolute size-3.5 rounded-full bg-white shadow-sm"
+        animate={{ x: enabled ? 18 : 2 }}
+        transition={{ type: "spring", stiffness: 500, damping: 35 }}
+      />
+    </button>
+  )
+}
+
+function LiveClock({ style }: { style?: React.CSSProperties }) {
+  const [time, setTime] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setTime(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <span className="font-['Quicksand:Bold',sans-serif] tabular-nums" style={style}>
+      {time.toLocaleTimeString()}
+    </span>
+  )
+}
+
+function ItemContent({ item }: { item: OSDItem }) {
+  const s = { fontSize: item.fontSize * item.scale, color: item.color } as React.CSSProperties
+  if (item.type === "text") return <span className="font-['Quicksand:Bold',sans-serif] drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)] whitespace-nowrap" style={s}>{item.content || "Sample Text"}</span>
+  if (item.type === "time") return <LiveClock style={{ ...s, filter: "drop-shadow(0 1px 4px rgba(0,0,0,.9))" }} />
+  if (item.type === "image" && item.imageUrl) return <img src={item.imageUrl} alt="" style={{ width: 80 * item.scale, height: 50 * item.scale, objectFit: "contain" }} className="drop-shadow-[0_1px_4px_rgba(0,0,0,.9)]" />
+  if (item.type === "h5") return (
+    <div className="rounded border border-white/30 bg-black/50 px-1.5 py-0.5 whitespace-nowrap drop-shadow-[0_1px_4px_rgba(0,0,0,.9)]" style={{ ...s, fontSize: (item.fontSize - 2) * item.scale }}>
+      <span className="font-['Inter:Bold',sans-serif]">{item.content || "H5 Overlay"}</span>
+    </div>
+  )
+  return null
+}
+
+// Interactive OSD canvas with drag + resize
+function OSDCanvas({
+  items,
+  enabled,
+  selectedId,
+  onSelect,
+  onMove,
+  onResize,
+}: {
+  items: OSDItem[]
+  enabled: boolean
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onMove: (id: string, x: number, y: number) => void
+  onResize: (id: string, delta: number) => void
+}) {
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const dragState = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null)
+  const resizeState = useRef<{ id: string; startX: number; startY: number; origScale: number } | null>(null)
+
+  const getCanvasPct = (clientX: number, clientY: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
+    return {
+      x: Math.max(2, Math.min(98, ((clientX - rect.left) / rect.width) * 100)),
+      y: Math.max(2, Math.min(98, ((clientY - rect.top) / rect.height) * 100)),
+    }
+  }
+
+  const handleItemPointerDown = (e: React.PointerEvent, item: OSDItem) => {
+    e.stopPropagation()
+    onSelect(item.id)
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    dragState.current = { id: item.id, startX: e.clientX, startY: e.clientY, origX: item.x, origY: item.y }
+  }
+
+  const handleResizePointerDown = (e: React.PointerEvent, item: OSDItem) => {
+    e.stopPropagation()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    resizeState.current = { id: item.id, startX: e.clientX, startY: e.clientY, origScale: item.scale }
+  }
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (dragState.current) {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const dx = ((e.clientX - dragState.current.startX) / rect.width) * 100
+      const dy = ((e.clientY - dragState.current.startY) / rect.height) * 100
+      onMove(
+        dragState.current.id,
+        Math.max(2, Math.min(98, dragState.current.origX + dx)),
+        Math.max(2, Math.min(98, dragState.current.origY + dy))
+      )
+    }
+    if (resizeState.current) {
+      const dx = e.clientX - resizeState.current.startX
+      const dy = e.clientY - resizeState.current.startY
+      const delta = (dx + dy) / 100
+      onResize(resizeState.current.id, Math.max(0.3, Math.min(4, resizeState.current.origScale + delta)))
+    }
+  }
+
+  const handlePointerUp = () => {
+    dragState.current = null
+    resizeState.current = null
+  }
+
+  const activeItems = items.filter((i) => i.enabled)
+
+  return (
+    <div
+      ref={canvasRef}
+      className="relative w-full bg-black rounded-xl overflow-hidden select-none"
+      style={{ aspectRatio: "16/9" }}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onClick={() => onSelect("")}
+    >
+      {/* Video bg */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0d1117] to-[#000] flex items-center justify-center">
+        <svg viewBox="0 0 64 64" fill="none" className="size-12 opacity-15">
+          <rect x="4" y="10" width="56" height="38" rx="4" stroke="white" strokeWidth="2" />
+          <path d="M22 26l20 6-20 6V26z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
+        </svg>
+      </div>
+
+      {/* Crosshair grid guide (subtle) */}
+      {enabled && (
+        <div className="absolute inset-0 pointer-events-none opacity-[0.04]">
+          <div className="absolute left-1/3 top-0 bottom-0 border-l border-white" />
+          <div className="absolute left-2/3 top-0 bottom-0 border-l border-white" />
+          <div className="absolute top-1/3 left-0 right-0 border-t border-white" />
+          <div className="absolute top-2/3 left-0 right-0 border-t border-white" />
+        </div>
+      )}
+
+      <AnimatePresence>
+        {enabled && activeItems.map((item) => {
+          const isSel = item.id === selectedId
+          return (
+            <motion.div
+              key={item.id}
+              className="absolute"
+              style={{ left: `${item.x}%`, top: `${item.y}%`, transform: "translate(-50%,-50%)" }}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+            >
+              {/* Selection ring */}
+              {isSel && (
+                <div
+                  className="absolute rounded pointer-events-none"
+                  style={{
+                    inset: "-5px",
+                    border: `1.5px dashed ${TYPE_COLORS[item.type]}`,
+                    borderRadius: 6,
+                  }}
+                />
+              )}
+              {/* Drag handle area */}
+              <div
+                className="cursor-move"
+                style={{ touchAction: "none" }}
+                onPointerDown={(e) => handleItemPointerDown(e, item)}
+              >
+                <ItemContent item={item} />
+              </div>
+              {/* Resize handle (bottom-right corner) */}
+              {isSel && (
+                <div
+                  className="absolute bottom-[-8px] right-[-8px] size-3 rounded-sm cursor-se-resize"
+                  style={{ backgroundColor: TYPE_COLORS[item.type], touchAction: "none" }}
+                  onPointerDown={(e) => handleResizePointerDown(e, item)}
+                />
+              )}
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
+
+      {/* Disabled overlay */}
+      {!enabled && (
+        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+          <span className="font-['Quicksand:Bold',sans-serif] text-[#8e8e91] text-xs tracking-widest uppercase">OSD Disabled</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+let uid = 0
+const genId = () => `osd-${Date.now()}-${++uid}`
+
+const INIT_ITEMS: OSDItem[] = [
+  { id: genId(), type: "time",  label: "Timestamp",    enabled: true, content: "",              x: 85, y: 8,  fontSize: 16, scale: 1, color: "#00BE63" },
+  { id: genId(), type: "text",  label: "Channel Name", enabled: true, content: "HERO ESPORTS",  x: 15, y: 8,  fontSize: 18, scale: 1, color: "#FFFFFF" },
+]
+
+interface OSDDrawerProps {
+  open: boolean
+  onClose: () => void
+}
+
+export default function OSDDrawer({ open, onClose }: OSDDrawerProps) {
+  const [osdEnabled,    setOsdEnabled]    = useState(true)
+  const [items,         setItems]         = useState<OSDItem[]>(INIT_ITEMS)
+  const [selectedId,    setSelectedId]    = useState<string | null>(INIT_ITEMS[0].id)
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([])
+  const [showGallery,   setShowGallery]   = useState(false)
+  const [tab,           setTab]           = useState<"list" | "props">("list")
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const selected = items.find((i) => i.id === selectedId) ?? null
+
+  const update = useCallback(<K extends keyof OSDItem>(id: string, k: K, v: OSDItem[K]) => {
+    setItems((p) => p.map((i) => (i.id === id ? { ...i, [k]: v } : i)))
+  }, [])
+
+  const addItem = (type: OSDItemType) => {
+    const item: OSDItem = {
+      id: genId(), type,
+      label:   type === "text" ? "New Text" : type === "time" ? "Timestamp" : type === "image" ? "Logo" : "H5 Widget",
+      enabled: true,
+      content: type === "text" ? "New Text" : type === "h5" ? "H5 Content" : "",
+      x: 50, y: 50,
+      fontSize: 16,
+      scale: 1,
+      color: TYPE_COLORS[type],
+    }
+    setItems((p) => [...p, item])
+    setSelectedId(item.id)
+    setTab("props")
+  }
+
+  const removeItem = (id: string) => {
+    setItems((p) => p.filter((i) => i.id !== id))
+    if (selectedId === id) setSelectedId(null)
+  }
+
+  const handleMove  = useCallback((id: string, x: number, y: number) => { update(id, "x", x); update(id, "y", y) }, [update])
+  const handleResize = useCallback((id: string, scale: number) => update(id, "scale", scale), [update])
+
+  const selectAndTab = (id: string) => { setSelectedId(id); setTab("props") }
+
+  const handleUpload = (files: FileList) => {
+    const imgs = Array.from(files).map((f) => ({ id: genId(), url: URL.createObjectURL(f), name: f.name }))
+    setGalleryImages((p) => [...p, ...imgs])
+  }
+
+  const applyPreset = (x: number, y: number) => {
+    if (!selectedId) return
+    setItems((p) => p.map((i) => i.id === selectedId ? { ...i, x, y } : i))
+  }
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            className="fixed inset-0 z-40 bg-black/40"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={onClose}
+          />
+
+          <motion.div
+            className="fixed right-0 top-0 bottom-0 z-50 flex flex-col bg-[#1e1e1e] border-l border-[#575757] shadow-2xl"
+            style={{ width: 500 }}
+            initial={{ x: 500 }}
+            animate={{ x: 0 }}
+            exit={{ x: 500 }}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
+          >
+            {/* ── Header ── */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#575757] bg-[#282828] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="bg-[rgba(255,255,255,0.1)] border border-[#262626] rounded-lg p-1.5">
+                  <svg viewBox="0 0 36 36" fill="none" className="size-5 text-white">
+                    <path d="M9 9h18v15H9zM13 24v3M23 24v3M9 18h3M24 18h3M13.5 9V6M22.5 9V6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M12.75 10.5h3M14.25 9v3M21 12.75h4.5M23.25 10.5v4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-['Quicksand:Bold',sans-serif] text-white text-[14px] leading-5">OSD Overlay</p>
+                  <p className="font-['Quicksand:Regular',sans-serif] text-[#8e8e91] text-[11px]">On-Screen Display</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-['Quicksand:Regular',sans-serif] text-xs text-[#8e8e91]">{osdEnabled ? "ON" : "OFF"}</span>
+                  <Toggle enabled={osdEnabled} onToggle={() => setOsdEnabled((v) => !v)} />
+                </div>
+                <button onClick={onClose} className="size-7 flex items-center justify-center rounded hover:bg-[#3f3f3f] text-[#8e8e91] hover:text-white transition-colors">
+                  <svg viewBox="0 0 16 16" fill="none" className="size-4">
+                    <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* ── Canvas ── */}
+            <div className="px-4 py-3 border-b border-[#575757] shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-['Quicksand:Bold',sans-serif] text-[10px] uppercase tracking-widest text-[#575757]">Canvas Preview — drag to reposition · corner handle to scale</p>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-['Quicksand:Bold',sans-serif] ${osdEnabled ? "bg-[#00BE63]/20 text-[#00BE63]" : "bg-[#575757]/30 text-[#575757]"}`}>
+                  {osdEnabled ? "LIVE" : "DISABLED"}
+                </span>
+              </div>
+              <OSDCanvas
+                items={items}
+                enabled={osdEnabled}
+                selectedId={selectedId}
+                onSelect={(id) => { setSelectedId(id || null) }}
+                onMove={(id, x, y) => { update(id, "x", x); update(id, "y", y) }}
+                onResize={(id, s) => update(id, "scale", s)}
+              />
+            </div>
+
+            {/* ── Tabs ── */}
+            <div className="flex border-b border-[#575757] shrink-0 bg-[#222222]">
+              {(["list", "props"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`flex-1 h-9 font-['Quicksand:Bold',sans-serif] text-[13px] transition-colors ${
+                    tab === t ? "text-[#11B2FF] border-b-2 border-[#11B2FF]" : "text-[#8e8e91] hover:text-white"
+                  }`}
+                >
+                  {t === "list" ? "Overlay List" : "Properties"}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Scrollable body ── */}
+            <div className="flex-1 overflow-y-auto">
+
+              {/* ══ LIST tab ══ */}
+              {tab === "list" && (
+                <div className="p-3 flex flex-col gap-1.5">
+                  <AnimatePresence>
+                    {items.map((item) => (
+                      <motion.div
+                        key={item.id}
+                        layout
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer border transition-colors ${
+                          selectedId === item.id
+                            ? "bg-[#2d2d2d] border-[#575757]"
+                            : "bg-[#282828] border-transparent hover:border-[#3f3f3f]"
+                        }`}
+                        onClick={() => selectAndTab(item.id)}
+                      >
+                        {/* Color dot + icon */}
+                        <div
+                          className="size-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: TYPE_COLORS[item.type] + "20", color: TYPE_COLORS[item.type] }}
+                        >
+                          {TYPE_ICONS[item.type]}
+                        </div>
+
+                        {/* Name + position */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-['Quicksand:Bold',sans-serif] text-sm text-white truncate leading-5">{item.label}</p>
+                          <p className="font-['Quicksand:Regular',sans-serif] text-[11px] text-[#8e8e91] leading-4 tabular-nums">
+                            <span style={{ color: TYPE_COLORS[item.type] }}>{TYPE_LABELS[item.type]}</span>
+                            {" · "}
+                            <span>{Math.round(item.x)}%, {Math.round(item.y)}%</span>
+                            {" · "}
+                            <span>{Math.round(item.scale * 100)}%</span>
+                          </p>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <Toggle enabled={item.enabled} onToggle={() => update(item.id, "enabled", !item.enabled)} />
+                          <button
+                            onClick={() => removeItem(item.id)}
+                            className="size-6 flex items-center justify-center rounded hover:bg-[#575757] text-[#575757] hover:text-red-400 transition-colors"
+                          >
+                            <svg viewBox="0 0 14 14" fill="none" className="size-3.5">
+                              <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+
+                  {items.length === 0 && (
+                    <div className="py-10 flex flex-col items-center text-[#575757]">
+                      <svg viewBox="0 0 40 40" fill="none" className="size-9 mb-2 opacity-40">
+                        <rect x="4" y="6" width="32" height="22" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                        <path d="M10 17h10M10 21h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                      <p className="font-['Quicksand:Regular',sans-serif] text-sm text-center">No overlays yet</p>
+                    </div>
+                  )}
+
+                  {/* Add buttons */}
+                  <div className="mt-2 pt-3 border-t border-[#2d2d2d]">
+                    <p className="font-['Quicksand:Bold',sans-serif] text-[10px] uppercase tracking-widest text-[#575757] mb-2.5">Add Overlay</p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(["text", "time", "image", "h5"] as OSDItemType[]).map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => addItem(type)}
+                          className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-[#282828] hover:bg-[#3f3f3f] border border-[#3f3f3f] hover:border-[#575757] transition-colors"
+                        >
+                          <span style={{ color: TYPE_COLORS[type] }}>{TYPE_ICONS[type]}</span>
+                          <span className="font-['Quicksand:Bold',sans-serif] text-[11px] text-white">{TYPE_LABELS[type]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ══ PROPERTIES tab ══ */}
+              {tab === "props" && (
+                <div className="p-4">
+                  {selected ? (
+                    <div className="flex flex-col gap-4">
+                      {/* Type + visibility */}
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: TYPE_COLORS[selected.type] + "22", color: TYPE_COLORS[selected.type] }}>
+                          {TYPE_ICONS[selected.type]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-['Quicksand:Bold',sans-serif] text-sm text-white">{selected.label}</p>
+                          <p className="font-['Quicksand:Regular',sans-serif] text-xs text-[#8e8e91]">{TYPE_LABELS[selected.type]} · {Math.round(selected.x)}%, {Math.round(selected.y)}%</p>
+                        </div>
+                        <Toggle enabled={selected.enabled} onToggle={() => update(selected.id, "enabled", !selected.enabled)} />
+                      </div>
+
+                      <div className="h-px bg-[#2d2d2d]" />
+
+                      {/* Label */}
+                      <Field label="Label">
+                        <input
+                          className="w-full h-8 rounded-lg bg-[#282828] border border-[#3f3f3f] px-3 text-sm text-white font-['Quicksand:Regular',sans-serif] focus:border-[#11B2FF] focus:outline-none transition-colors"
+                          value={selected.label}
+                          onChange={(e) => update(selected.id, "label", e.target.value)}
+                        />
+                      </Field>
+
+                      {/* Content */}
+                      {(selected.type === "text" || selected.type === "h5") && (
+                        <Field label={selected.type === "h5" ? "H5 Content" : "Text Content"}>
+                          <textarea
+                            rows={2}
+                            className="w-full rounded-lg bg-[#282828] border border-[#3f3f3f] px-3 py-2 text-sm text-white font-['Quicksand:Regular',sans-serif] focus:border-[#11B2FF] focus:outline-none transition-colors resize-none"
+                            value={selected.content}
+                            onChange={(e) => update(selected.id, "content", e.target.value)}
+                          />
+                        </Field>
+                      )}
+
+                      {/* Image */}
+                      {selected.type === "image" && (
+                        <Field label="Image">
+                          {selected.imageUrl ? (
+                            <div className="relative group rounded-xl overflow-hidden border border-[#3f3f3f] aspect-video bg-black">
+                              <img src={selected.imageUrl} alt="" className="size-full object-contain" />
+                              <button onClick={() => setShowGallery(true)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center font-['Quicksand:Bold',sans-serif] text-xs text-white">Change</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setShowGallery(true)} className="w-full h-16 rounded-xl border border-dashed border-[#3f3f3f] hover:border-[#11B2FF] hover:bg-[#11B2FF]/5 transition-colors flex flex-col items-center justify-center gap-1 text-[#8e8e91] hover:text-[#11B2FF]">
+                              <svg viewBox="0 0 16 16" fill="none" className="size-4"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                              <span className="font-['Quicksand:Regular',sans-serif] text-xs">Open Gallery</span>
+                            </button>
+                          )}
+                        </Field>
+                      )}
+
+                      <div className="h-px bg-[#2d2d2d]" />
+
+                      {/* ── Position section ── */}
+                      <div>
+                        <p className="font-['Quicksand:Bold',sans-serif] text-[10px] uppercase tracking-widest text-[#575757] mb-3">Position</p>
+
+                        {/* 9-point preset grid */}
+                        <div className="mb-3">
+                          <p className="font-['Quicksand:Regular',sans-serif] text-xs text-[#8e8e91] mb-2">Quick Preset</p>
+                          <div className="grid grid-cols-3 gap-1.5 w-[140px]">
+                            {PRESET_LABELS.map(([name, sym, px, py]) => {
+                              const active = Math.round(selected.x) === px && Math.round(selected.y) === py
+                              return (
+                                <button
+                                  key={name}
+                                  title={name}
+                                  onClick={() => applyPreset(px, py)}
+                                  className={`h-9 rounded-lg flex items-center justify-center text-base transition-all ${
+                                    active
+                                      ? "bg-[#11B2FF] text-white shadow-[0_0_0_1px_#11B2FF]"
+                                      : "bg-[#282828] hover:bg-[#3f3f3f] text-[#8e8e91] hover:text-white border border-[#3f3f3f]"
+                                  }`}
+                                >
+                                  <span className="text-[11px] font-['Quicksand:Bold',sans-serif]">{sym}</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* X / Y numeric inputs */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="font-['Quicksand:Regular',sans-serif] text-[10px] text-[#575757] mb-1">X  ({Math.round(selected.x)}%)</p>
+                            <input
+                              type="range" min={2} max={98}
+                              className="w-full accent-[#11B2FF]"
+                              value={Math.round(selected.x)}
+                              onChange={(e) => update(selected.id, "x", Number(e.target.value))}
+                            />
+                          </div>
+                          <div>
+                            <p className="font-['Quicksand:Regular',sans-serif] text-[10px] text-[#575757] mb-1">Y  ({Math.round(selected.y)}%)</p>
+                            <input
+                              type="range" min={2} max={98}
+                              className="w-full accent-[#11B2FF]"
+                              value={Math.round(selected.y)}
+                              onChange={(e) => update(selected.id, "y", Number(e.target.value))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="h-px bg-[#2d2d2d]" />
+
+                      {/* ── Scale & Font size ── */}
+                      <div>
+                        <p className="font-['Quicksand:Bold',sans-serif] text-[10px] uppercase tracking-widest text-[#575757] mb-3">Size</p>
+                        <div className="flex flex-col gap-3">
+                          <div>
+                            <p className="font-['Quicksand:Regular',sans-serif] text-[10px] text-[#575757] mb-1">Scale  ({Math.round(selected.scale * 100)}%)</p>
+                            <input
+                              type="range" min={30} max={300}
+                              className="w-full accent-[#11B2FF]"
+                              value={Math.round(selected.scale * 100)}
+                              onChange={(e) => update(selected.id, "scale", Number(e.target.value) / 100)}
+                            />
+                          </div>
+                          {selected.type !== "image" && (
+                            <div>
+                              <p className="font-['Quicksand:Regular',sans-serif] text-[10px] text-[#575757] mb-1">Font Size  ({selected.fontSize}px)</p>
+                              <input
+                                type="range" min={10} max={72}
+                                className="w-full accent-[#11B2FF]"
+                                value={selected.fontSize}
+                                onChange={(e) => update(selected.id, "fontSize", Number(e.target.value))}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── Color ── */}
+                      {selected.type !== "image" && (
+                        <>
+                          <div className="h-px bg-[#2d2d2d]" />
+                          <div>
+                            <p className="font-['Quicksand:Bold',sans-serif] text-[10px] uppercase tracking-widest text-[#575757] mb-3">Color</p>
+                            <div className="flex items-center gap-2">
+                              <input type="color" className="h-8 w-10 rounded-lg border border-[#3f3f3f] bg-[#282828] cursor-pointer" value={selected.color} onChange={(e) => update(selected.id, "color", e.target.value)} />
+                              <input
+                                className="flex-1 h-8 rounded-lg bg-[#282828] border border-[#3f3f3f] px-3 text-sm text-white font-['Quicksand:Regular',sans-serif] focus:border-[#11B2FF] focus:outline-none transition-colors uppercase"
+                                value={selected.color}
+                                onChange={(e) => update(selected.id, "color", e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Delete */}
+                      <button
+                        onClick={() => { removeItem(selected.id); setTab("list") }}
+                        className="mt-1 h-8 rounded-xl border border-red-500/30 hover:bg-red-500/10 transition-colors font-['Quicksand:Bold',sans-serif] text-xs text-red-400 flex items-center justify-center gap-2"
+                      >
+                        <svg viewBox="0 0 14 14" fill="none" className="size-3.5">
+                          <path d="M2.5 3.5h9M5.5 3.5v-1h3v1M4.5 3.5l.5 7h5l.5-7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Delete Element
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="py-14 flex flex-col items-center text-[#575757]">
+                      <svg viewBox="0 0 40 40" fill="none" className="size-10 mb-3 opacity-40">
+                        <rect x="4" y="6" width="32" height="22" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                        <rect x="14" y="11" width="8" height="5" rx="0.5" fill="currentColor" opacity="0.4" />
+                        <path d="M10 20h6M10 24h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                      <p className="font-['Quicksand:Regular',sans-serif] text-sm text-center">Select an overlay element<br />on the canvas or list</p>
+                      <button onClick={() => setTab("list")} className="mt-4 h-7 px-4 rounded-full bg-[#3f3f3f] hover:bg-[#575757] transition-colors font-['Quicksand:Bold',sans-serif] text-xs text-white">Back to List</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Footer ── */}
+            <div className="border-t border-[#575757] px-5 py-3.5 bg-[#282828] shrink-0 flex items-center gap-3">
+              <div className="flex-1">
+                <p className="font-['Quicksand:Regular',sans-serif] text-xs text-[#8e8e91]">
+                  {items.filter((i) => i.enabled).length}/{items.length} overlay{items.length !== 1 ? "s" : ""} active
+                </p>
+              </div>
+              <button onClick={onClose} className="h-8 px-5 rounded-full bg-white hover:bg-gray-100 transition-colors font-['Quicksand:Bold',sans-serif] text-sm text-[#1a1a1a]">Apply</button>
+            </div>
+          </motion.div>
+
+          {/* ── Gallery modal ── */}
+          <AnimatePresence>
+            {showGallery && (
+              <motion.div
+                className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setShowGallery(false)}
+              >
+                <motion.div
+                  className="bg-[#282828] rounded-2xl border border-[#575757] w-[500px] max-h-[440px] flex flex-col overflow-hidden"
+                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#575757]">
+                    <p className="font-['Quicksand:Bold',sans-serif] text-white">Image Gallery</p>
+                    <button onClick={() => setShowGallery(false)} className="text-[#8e8e91] hover:text-white transition-colors">
+                      <svg viewBox="0 0 16 16" fill="none" className="size-4"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {galleryImages.length === 0 ? (
+                      <div className="h-28 flex flex-col items-center justify-center text-[#8e8e91]">
+                        <svg viewBox="0 0 48 48" fill="none" className="size-9 mb-2 opacity-40">
+                          <rect x="4" y="8" width="40" height="32" rx="4" stroke="currentColor" strokeWidth="2" />
+                          <circle cx="17" cy="20" r="3" stroke="currentColor" strokeWidth="2" />
+                          <path d="M4 34l12-10 8 8 6-6 14 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <p className="font-['Quicksand:Regular',sans-serif] text-sm">No images uploaded</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-2.5">
+                        {galleryImages.map((img) => (
+                          <button
+                            key={img.id}
+                            onClick={() => { if (selected) update(selected.id, "imageUrl", img.url); setShowGallery(false) }}
+                            className="group relative aspect-video rounded-lg overflow-hidden border border-[#575757] hover:border-[#11B2FF] transition-colors"
+                          >
+                            <img src={img.url} alt={img.name} className="size-full object-cover" />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                              <svg viewBox="0 0 20 20" fill="none" className="size-5 text-white opacity-0 group-hover:opacity-100 transition-opacity"><path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="border-t border-[#575757] p-4">
+                    <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && handleUpload(e.target.files)} />
+                    <button onClick={() => fileRef.current?.click()} className="w-full h-9 rounded-xl border border-dashed border-[#575757] hover:border-[#11B2FF] hover:bg-[#11B2FF]/10 transition-colors flex items-center justify-center gap-2 font-['Quicksand:Bold',sans-serif] text-sm text-[#8e8e91] hover:text-[#11B2FF]">
+                      <svg viewBox="0 0 16 16" fill="none" className="size-4"><path d="M8 2v10M3 7l5-5 5 5M2 14h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      Upload Images
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block font-['Quicksand:Bold',sans-serif] text-[10px] text-[#8e8e91] uppercase tracking-wide mb-1.5">{label}</label>
+      {children}
+    </div>
+  )
+}
